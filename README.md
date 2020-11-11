@@ -25,7 +25,7 @@ microservice fuse developed based on golang
 	}
 ```
 ### 返回
-    除了执行方法返回的错误,显示___BREAKER_OPEN_ERROR___错误(错误字符串为***breaker_open***)则正处于熔断当中，次情况可能对应两种状态中的一种:
+    除了执行方法返回的错误,显示___BREAKER_OPEN_ERROR___错误(错误字符串为___breaker_open___)则正处于熔断当中，次情况可能对应两种状态中的一种:
 	1、熔断中
 	2、在半开启时多余请求被限流
 
