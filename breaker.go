@@ -23,8 +23,6 @@ var (
 var (
 	/*方法为空*/
 	FUNC_NIL_ERROR error = errors.New("runFunc nil")
-	/*令牌为空*/
-	TICKET_NIL_ERROR error = errors.New("ticket nil")
 	/*策略名为空*/
 	NAME_NIL_ERROR error = errors.New("name nil")
 )
@@ -43,8 +41,6 @@ type breaker struct {
 	interval int64
 	/*熔断休眠时间*/
 	sleepWindow int64
-	/*半开启锁*/
-	halfLock int32
 	/*熔断器状态*/
 	state int32
 	/*周期管理*/
