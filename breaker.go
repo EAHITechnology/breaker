@@ -144,6 +144,9 @@ func (this *breaker) updateState(oldStatus, state int32) bool {
 	return atomic.CompareAndSwapInt32(&this.state, oldStatus, state)
 }
 
+/*
+计算错误率
+*/
 func (this *breaker) getFailPercentThreshold() (bool, int) {
 	reqChan := make(chan uint32)
 	failChan := make(chan uint32)
@@ -174,6 +177,9 @@ Loop:
 	return true, int(float32(failCnt)/float32(reqCnt)*100 + 0.5)
 }
 
+/*
+计算半开启时错误率
+*/
 func (this *breaker) getBreakFailPercentThreshold() (bool, int) {
 	reqChan := make(chan uint32)
 	failChan := make(chan uint32)
@@ -332,14 +338,13 @@ func (this *breaker) afterDo(ctx context.Context, run runFunc, fallback fallback
 	case BREAKER_OPEN_ERROR:
 		this.safelCalllback(fallback, BREAKER_OPEN_ERROR)
 		return BREAKER_OPEN_ERROR
-	/*熔断转移到半开启*/
+	/*需要熔断转移到半开启时*/
 	case OPEN_TO_HALF_ERROR:
-		/*取令牌*/
 		if !this.lpm.GetTicket() {
 			this.safelCalllback(fallback, BREAKER_OPEN_ERROR)
 			return BREAKER_OPEN_ERROR
 		}
-		//状态转移到半开启
+		/*状态转移到半开启*/
 		this.updateState(STATE_OPEN, STATE_HALFOPEN)
 		/*执行方法*/
 		runErr := run()
@@ -350,9 +355,8 @@ func (this *breaker) afterDo(ctx context.Context, run runFunc, fallback fallback
 		}
 		this.success()
 		return nil
-	/*熔断限流开始，半开启状态转移到开启状态或者关闭状态*/
+	/*熔断限流开始时*/
 	case LIMIT_ERROR:
-		//如果令牌用完
 		if !this.lpm.GetTicket() {
 			this.safelCalllback(fallback, BREAKER_OPEN_ERROR)
 			return BREAKER_OPEN_ERROR
