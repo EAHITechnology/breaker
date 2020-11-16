@@ -29,8 +29,10 @@ func NewLimitPoolManager(max int) *limitPoolManager {
 func (this *limitPoolManager) ReturnAll() {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	for i := 0; i < this.max; i++ {
-		this.tickets <- &struct{}{}
+	if len(this.tickets) == 0 {
+		for i := 0; i < this.max; i++ {
+			this.tickets <- &struct{}{}
+		}
 	}
 }
 
