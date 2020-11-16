@@ -2,7 +2,6 @@ package breaker
 
 const (
 	STATE_CLOSED int32 = iota
-	STATE_HALFOPEN
 	STATE_OPEN
 )
 
