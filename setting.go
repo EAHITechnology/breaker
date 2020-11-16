@@ -6,7 +6,7 @@ import (
 
 var (
 	DefaultInterval                     int64 = 30
-	DefaultSleepWindow                  int64 = 10
+	DefaultSleepWindow                  int64 = 20
 	DefaultBreakerTestMax                     = 20
 	DefaultErrorPercentThreshold              = 50
 	DefaultBreakerErrorPercentThreshold       = 50
