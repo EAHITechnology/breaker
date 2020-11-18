@@ -38,10 +38,10 @@ type SlidingWindow struct {
 	breakFail int32
 	/*熔断恢复需要请求数*/
 	breakCnt int32
-	/*起始时间*/
+	/*开始时间*/
 	startTime int64
 	/*格子时间*/
-	diff      int64
+	diff int64
 	/*错误率*/
 	ErrorPercent int
 	/*半开启错误率*/
@@ -139,7 +139,7 @@ func (this *SlidingWindow) AddBreak(res bool) bool {
 
 /*计算错误率*/
 func (this *SlidingWindow) getFailPercentThreshold() (bool, int) {
-	bucket := time.Now().Local().Unix() - 10
+	bucket := time.Now().Local().Unix() - this.windowSize
 
 	var reqTotalCnt uint32 = 0
 	var failTotalCnt uint32 = 0
