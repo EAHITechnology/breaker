@@ -17,6 +17,10 @@ const (
 	STATUS_OPEN
 )
 
+var (
+	cellCnt = 20
+)
+
 /*
 滑动窗口计数器
 */
@@ -35,17 +39,16 @@ type SlidingWindow struct {
 	breakFail int32
 	/*熔断恢复需要请求数*/
 	breakCnt int32
-	/*尾指针*/
-	pEnd int
-	/*尾指针*/
-	pFailEnd int
 	/*起始时间*/
 	startTime int64
+	/*格子时间*/
+	diff      int64
 	/*错误率*/
 	ErrorPercent int
 	/*半开启错误率*/
 	BreakErrorPercent int
-	status            int32
+	/*状态*/
+	status int32
 }
 
 type SlidingWindowSetting struct {
@@ -55,7 +58,7 @@ type SlidingWindowSetting struct {
 	ErrorPercent int
 	/*半开启错误率*/
 	BreakErrorPercent int
-
+	/*半开启错误率*/
 	BreakCnt int
 }
 
@@ -73,27 +76,26 @@ func (this *SlidingWindow) consumeRes() {
 }
 
 func NewSlidingWindow(c SlidingWindowSetting) *SlidingWindow {
-	startTime := time.Now().Local().Unix()
 	rcs := []*Count{}
 	fcs := []*Count{}
-	for idx := 0; idx < int(c.CycleTime); idx++ {
+	for idx := 0; idx < int(cellCnt); idx++ {
 		c := &Count{}
 		c.val = 0
-		c.timeTamp = startTime + int64(idx)
+		c.timeTamp = 0
 		rcs = append(rcs, c)
 	}
-	for idx := 0; idx < int(c.CycleTime); idx++ {
+	for idx := 0; idx < int(cellCnt); idx++ {
 		c := &Count{}
 		c.val = 0
-		c.timeTamp = startTime + int64(idx)
+		c.timeTamp = 0
 		fcs = append(fcs, c)
 	}
 	slidingWindow := &SlidingWindow{
 		windowSize:        c.CycleTime,
+		diff:              c.CycleTime / int64(cellCnt),
 		resqRingWindow:    rcs,
 		failRingWindow:    fcs,
-		startTime:         startTime,
-		pEnd:              0,
+		startTime:         0,
 		reaChan:           make(chan bool, 10000),
 		ErrorPercent:      c.ErrorPercent,
 		BreakErrorPercent: c.BreakErrorPercent,
@@ -110,7 +112,7 @@ func (this *SlidingWindow) Add(res bool) {
 func (this *SlidingWindow) AddBreak(res bool) bool {
 	if res {
 		reqTotal := atomic.AddInt32(&this.breakReq, 1)
-		fmt.Println("reqTotal", reqTotal, "this.breakCnt", this.breakCnt)
+		fmt.Println("AddBreak reqTotal", reqTotal)
 		if reqTotal >= this.breakCnt {
 			defer this.clear()
 			failTotal := atomic.LoadInt32(&this.breakFail)
@@ -125,7 +127,6 @@ func (this *SlidingWindow) AddBreak(res bool) bool {
 	}
 	reqTotal := atomic.AddInt32(&this.breakReq, 1)
 	failTotal := atomic.AddInt32(&this.breakFail, 1)
-	fmt.Println("reqTotal", reqTotal, "failTotal", failTotal, "this.breakCnt", this.breakCnt)
 	if reqTotal >= this.breakCnt {
 		defer this.clear()
 		if int(float32(failTotal)/float32(reqTotal)*100+0.5) >= this.BreakErrorPercent {
@@ -188,7 +189,9 @@ loop:
 	if reqTotalCnt < 10 {
 		return false, 0
 	}
-	return true, int(float32(failTotalCnt)/float32(reqTotalCnt)*100 + 0.5)
+	p := int(float32(failTotalCnt)/float32(reqTotalCnt)*100 + 0.5)
+	fmt.Println("failTotalCnt", failTotalCnt, "reqTotalCnt", reqTotalCnt, p)
+	return true, p
 }
 
 /*
@@ -196,58 +199,51 @@ loop:
 */
 func (this *SlidingWindow) add() {
 	addTime := time.Now().Local().Unix()
+	diffTime := addTime - this.startTime
+	if diffTime >= this.windowSize {
+		this.startTime = addTime
+		diffTime = 0
+	}
+	loc := diffTime / this.diff
 
-	if this.resqRingWindow[this.pEnd].timeTamp >= addTime {
-		this.resqRingWindow[this.pEnd].val++
+	if addTime-this.resqRingWindow[loc].timeTamp >= this.windowSize {
+		this.resqRingWindow[loc].val = 1
+		this.resqRingWindow[loc].timeTamp = addTime
 		return
 	}
-	this.pEnd++
-	if this.pEnd >= int(this.windowSize) {
-		this.pEnd = 0
-	}
-	this.resqRingWindow[this.pEnd].timeTamp = addTime
-	this.resqRingWindow[this.pEnd].val = 1
+	this.resqRingWindow[loc].val++
 }
 
 func (this *SlidingWindow) addfail() {
 	addTime := time.Now().Local().Unix()
+	diffTime := addTime - this.startTime
+	if diffTime >= this.windowSize {
+		this.startTime = addTime
+		diffTime = 0
+	}
+	loc := diffTime / this.diff
 	var wg sync.WaitGroup
 	/*请求计数*/
 	wg.Add(1)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if this.resqRingWindow[this.pEnd].timeTamp >= addTime {
-			this.resqRingWindow[this.pEnd].val++
+		if addTime-this.resqRingWindow[loc].timeTamp >= this.windowSize {
+			this.resqRingWindow[loc].val = 1
+			this.resqRingWindow[loc].timeTamp = addTime
 			return
 		}
-		this.pEnd++
-		if this.pEnd >= int(this.windowSize) {
-			this.pEnd = 0
-		}
-		this.resqRingWindow[this.pEnd].timeTamp = addTime
-		this.resqRingWindow[this.pEnd].val = 1
+		this.resqRingWindow[loc].val++
 	}(&wg)
 	/*失败计数*/
 	wg.Add(1)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if this.failRingWindow[this.pFailEnd].timeTamp >= addTime {
-			this.failRingWindow[this.pFailEnd].val++
-			ok, percent := this.getFailPercentThreshold()
-			if !ok {
-				return
-			}
-			if percent >= this.ErrorPercent {
-				atomic.StoreInt32(&this.status, STATUS_OPEN)
-			}
+		if addTime-this.failRingWindow[loc].timeTamp >= this.windowSize {
+			this.failRingWindow[loc].val = 1
+			this.failRingWindow[loc].timeTamp = addTime
 			return
 		}
-		this.pFailEnd++
-		if this.pFailEnd >= int(this.windowSize) {
-			this.pFailEnd = 0
-		}
-		this.failRingWindow[this.pFailEnd].timeTamp = addTime
-		this.failRingWindow[this.pFailEnd].val = 1
+		this.failRingWindow[loc].val++
 	}(&wg)
 	wg.Wait()
 
@@ -255,7 +251,6 @@ func (this *SlidingWindow) addfail() {
 	if !ok {
 		return
 	}
-	//fmt.Println("percent", percent, "this.ErrorPercent", this.ErrorPercent)
 	if percent >= this.ErrorPercent {
 		atomic.StoreInt32(&this.status, STATUS_OPEN)
 	}
