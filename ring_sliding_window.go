@@ -1,7 +1,6 @@
 package breaker
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -112,7 +111,6 @@ func (this *SlidingWindow) Add(res bool) {
 func (this *SlidingWindow) AddBreak(res bool) bool {
 	if res {
 		reqTotal := atomic.AddInt32(&this.breakReq, 1)
-		fmt.Println("AddBreak reqTotal", reqTotal)
 		if reqTotal >= this.breakCnt {
 			defer this.clear()
 			failTotal := atomic.LoadInt32(&this.breakFail)
@@ -189,9 +187,7 @@ loop:
 	if reqTotalCnt < 10 {
 		return false, 0
 	}
-	p := int(float32(failTotalCnt)/float32(reqTotalCnt)*100 + 0.5)
-	fmt.Println("failTotalCnt", failTotalCnt, "reqTotalCnt", reqTotalCnt, p)
-	return true, p
+	return true, int(float32(failTotalCnt)/float32(reqTotalCnt)*100 + 0.5)
 }
 
 /*
