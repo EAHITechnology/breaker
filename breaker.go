@@ -29,20 +29,12 @@ var (
 type breaker struct {
 	/*策略名*/
 	name string
-	/*熔断器关闭时错误占比*/
-	errorPercentThreshold int
-	/*熔断限流期间错误占比*/
-	breakerErrorPercentThreshold int
-	/*统计收集的间隔*/
-	interval int64
 	/*熔断休眠时间*/
 	sleepWindow int64
 	/*周期管理*/
 	cycleTime int64
 	/*统计器*/
 	counter *SlidingWindow
-	/*半开启时触发状态转换需要的请求次数*/
-	breakerTestMax int
 	/*熔断时令牌桶*/
 	lpm *limitPoolManager
 }
@@ -88,15 +80,11 @@ func newBreaker(b *breakSettingInfo) *breaker {
 		BreakCnt:          b.BreakerTestMax,
 	})
 	return &breaker{
-		name:                         b.Name,
-		breakerErrorPercentThreshold: b.BreakerErrorPercentThreshold,
-		errorPercentThreshold:        b.ErrorPercentThreshold,
-		interval:                     b.Interval,
-		cycleTime:                    time.Now().Local().Unix() + b.Interval,
-		sleepWindow:                  b.SleepWindow,
-		counter:                      counter,
-		breakerTestMax:               b.BreakerTestMax,
-		lpm:                          lpm,
+		name:        b.Name,
+		cycleTime:   time.Now().Local().Unix() + b.SleepWindow,
+		sleepWindow: b.SleepWindow,
+		counter:     counter,
+		lpm:         lpm,
 	}
 }
 
