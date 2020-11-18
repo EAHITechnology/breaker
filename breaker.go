@@ -45,8 +45,6 @@ type breaker struct {
 	breakerTestMax int
 	/*熔断时令牌桶*/
 	lpm *limitPoolManager
-
-	stateLock int32
 }
 
 /*
@@ -84,7 +82,11 @@ type fallbackFunc func(error)
 */
 func newBreaker(b *breakSettingInfo) *breaker {
 	lpm := NewLimitPoolManager(b.BreakerTestMax)
-	counter := NewSlidingWindow(SlidingWindowSetting{CycleTime: b.Interval, ErrorPercent: b.ErrorPercentThreshold, BreakErrorPercent: b.BreakerErrorPercentThreshold, BreakCnt: b.BreakerTestMax})
+	counter := NewSlidingWindow(SlidingWindowSetting{CycleTime: b.Interval,
+		ErrorPercent:      b.ErrorPercentThreshold,
+		BreakErrorPercent: b.BreakerErrorPercentThreshold,
+		BreakCnt:          b.BreakerTestMax,
+	})
 	return &breaker{
 		name:                         b.Name,
 		breakerErrorPercentThreshold: b.BreakerErrorPercentThreshold,
@@ -133,17 +135,13 @@ func (this *breaker) fail() {
 	state := this.counter.GetStatus()
 	switch state {
 	case STATE_CLOSED:
+		atomic.StoreInt64(&this.cycleTime, time.Now().Local().Unix()+this.sleepWindow)
 		this.counter.Add(false)
-		if atomic.CompareAndSwapInt32(&this.stateLock, STATE_CLOSED, this.counter.GetStatus()) {
-			atomic.StoreInt64(&this.cycleTime, time.Now().Local().Unix()+this.sleepWindow)
-		}
 	case STATE_OPEN:
 		if time.Now().Local().Unix() > atomic.LoadInt64(&this.cycleTime) {
 			if this.counter.AddBreak(false) {
 				defer this.lpm.ReturnAll()
-				if !atomic.CompareAndSwapInt32(&this.stateLock, STATE_OPEN, this.counter.GetStatus()) {
-					atomic.StoreInt64(&this.cycleTime, time.Now().Local().Unix()+this.sleepWindow)
-				}
+				atomic.StoreInt64(&this.cycleTime, time.Now().Local().Unix()+this.sleepWindow)
 			}
 		}
 	}
@@ -156,17 +154,13 @@ func (this *breaker) success() {
 	state := this.counter.GetStatus()
 	switch state {
 	case STATE_CLOSED:
+		atomic.StoreInt64(&this.cycleTime, time.Now().Local().Unix()+this.sleepWindow)
 		this.counter.Add(true)
-		if atomic.CompareAndSwapInt32(&this.stateLock, STATE_CLOSED, this.counter.GetStatus()) {
-			atomic.StoreInt64(&this.cycleTime, time.Now().Local().Unix()+this.sleepWindow)
-		}
 	case STATE_OPEN:
 		if time.Now().Local().Unix() > atomic.LoadInt64(&this.cycleTime) {
 			if this.counter.AddBreak(true) {
 				defer this.lpm.ReturnAll()
-				if !atomic.CompareAndSwapInt32(&this.stateLock, STATE_OPEN, this.counter.GetStatus()) {
-					this.cycleTime = time.Now().Local().Unix() + this.sleepWindow
-				}
+				atomic.StoreInt64(&this.cycleTime, time.Now().Local().Unix()+this.sleepWindow)
 			}
 		}
 	}
